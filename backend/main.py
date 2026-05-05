@@ -84,8 +84,12 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
         }
 
     # Calculate overall progress
-    total_required = len(required)
-    total_completed = len(set(r.course_id for r in required) & completed_ids)
+    required_ids = set(r.course_id for r in required)
+    total_required = len(required_ids)
+    total_completed = len(required_ids & completed_ids)
+    all_courses = session.exec(select(Course)).all()
+    course_units = {c.course_id: c.units for c in all_courses}
+    units_completed = sum(course_units.get(c, 0) for c in completed_ids if c in required_ids)
     percentage = round((total_completed / total_required) * 100, 1) if total_required > 0 else 0
 
     return {
@@ -93,6 +97,7 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
         "major": major,
         "total_required": total_required,
         "total_completed": total_completed,
+        "units_completed": units_completed,
         "percentage": percentage,
         "by_category": category_progress
     }
