@@ -5,6 +5,7 @@ import CourseForm from './components/CourseForm'
 import AvailableCourses from './components/AvailableCourses'
 import PlanView from './components/PlanView'
 import CompletedCourseList from './components/CompletedCourseList'
+import WhatIf from './components/WhatIf'
 
 const STUDENT_ID = 1
 const MAJOR = "Computer Science"
@@ -84,7 +85,7 @@ function App() {
           />
         </div>
       </div>
-
+      <WhatIf studentId={STUDENT_ID} />
       <PlanView plan={plan?.plan} quartersToGraduation={plan?.quarters_to_graduation} />
       <RemainingCourses byCategory={progress.by_category} />
     </div>

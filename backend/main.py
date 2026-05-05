@@ -97,6 +97,67 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
         "by_category": category_progress
     }
 
+@app.get("/what-if/{student_id}")
+def what_if(student_id: int, major: str, add_program: str, session: Session = Depends(get_session)):
+    # Get current major requirements
+    current_required = session.exec(
+        select(DegreeRequirement).where(DegreeRequirement.major_name == major)
+    ).all()
+    current_ids = set(r.course_id for r in current_required)
+
+    # Get add-on program requirements
+    addon_required = session.exec(
+        select(DegreeRequirement).where(DegreeRequirement.major_name == add_program)
+    ).all()
+    addon_ids = set(r.course_id for r in addon_required)
+
+    # Get completed courses
+    completed = session.exec(
+        select(CompletedCourse).where(CompletedCourse.student_id == student_id)
+    ).all()
+    completed_ids = set(c.course_id for c in completed)
+
+    # Get all prerequisites
+    all_prereqs = session.exec(select(Prerequisite)).all()
+    prereq_map = {}
+    for p in all_prereqs:
+        if p.course_id not in prereq_map:
+            prereq_map[p.course_id] = set()
+        prereq_map[p.course_id].add(p.prereq_id)
+
+    # Combined requirements
+    combined_ids = current_ids | addon_ids
+
+    # Overlap — courses that count for both
+    overlap = current_ids & addon_ids
+
+    # Extra courses needed by adding the program
+    extra_courses = addon_ids - current_ids - completed_ids
+
+    # Find prereqs for extra courses that aren't already covered
+    extra_prereqs = set()
+    for course_id in extra_courses:
+        prereqs = prereq_map.get(course_id, set())
+        for prereq in prereqs:
+            if prereq not in current_ids and prereq not in completed_ids and prereq not in addon_ids:
+                extra_prereqs.add(prereq)
+
+    # What's left in each scenario
+    current_remaining = current_ids - completed_ids
+    combined_remaining = combined_ids - completed_ids
+
+    return {
+        "student_id": student_id,
+        "major": major,
+        "add_program": add_program,
+        "current_remaining": len(current_remaining),
+        "combined_remaining": len(combined_remaining),
+        "overlap_courses": list(overlap),
+        "extra_courses_needed": list(extra_courses),
+        "extra_count": len(extra_courses),
+        "uncovered_prereqs": list(extra_prereqs)
+    }
+
 @app.get("/available-courses/{student_id}")
 def get_available_courses(student_id: int, major: str, session: Session = Depends(get_session)):
     # Step 1: Get all required course IDs for this major
@@ -284,6 +345,13 @@ def seed_data(session: Session = Depends(get_session)):
         Course(course_id="PHY 9A", name="Classical Physics", units=4),
         Course(course_id="PHY 9B", name="Classical Physics", units=4),
         Course(course_id="PHY 9C", name="Classical Physics", units=4),
+        # Statistics Minor courses
+        Course(course_id="STA 106", name="Applied Statistical Methods: ANOVA", units=4),
+        Course(course_id="STA 108", name="Applied Statistical Methods: Regression", units=4),
+        Course(course_id="STA 131A", name="Introduction to Probability Theory", units=4),
+        Course(course_id="STA 131B", name="Mathematical Statistics", units=4),
+        Course(course_id="STA 141A", name="Fundamentals of Statistical Data Science", units=4),
+        Course(course_id="STA 013/STA 032", name="Elementary Statistics or Gateway to Statistical Data Science", units=4),
     ]
 
     for course in courses:
@@ -313,6 +381,12 @@ def seed_data(session: Session = Depends(get_session)):
         DegreeRequirement(major_name="Computer Science", course_id="PHY 9A", category="science"),
         DegreeRequirement(major_name="Computer Science", course_id="PHY 9B", category="science"),
         DegreeRequirement(major_name="Computer Science", course_id="PHY 9C", category="science"),
+        # Statistics Minor requirements
+        DegreeRequirement(major_name="Statistics Minor", course_id="STA 106", category="core"),
+        DegreeRequirement(major_name="Statistics Minor", course_id="STA 108", category="core"),
+        DegreeRequirement(major_name="Statistics Minor", course_id="STA 131A", category="series"),
+        DegreeRequirement(major_name="Statistics Minor", course_id="STA 131B", category="series"),
+        DegreeRequirement(major_name="Statistics Minor", course_id="STA 141A", category="elective"),
     ]
 
     for req in requirements:
@@ -348,6 +422,11 @@ def seed_data(session: Session = Depends(get_session)):
     Prerequisite(course_id="PHY 9B",  prereq_id="MAT 21C"),
     Prerequisite(course_id="PHY 9C",  prereq_id="PHY 9B"),
     Prerequisite(course_id="PHY 9C",  prereq_id="MAT 22A"),
+    # Statistics Minor prerequisites
+    Prerequisite(course_id="STA 131B", prereq_id="STA 131A"),
+    Prerequisite(course_id="STA 141A", prereq_id="STA 131A"),
+    Prerequisite(course_id="STA 106",  prereq_id="STA 013/STA 032"),
+    Prerequisite(course_id="STA 108",  prereq_id="STA 013/STA 032"),
     ]
 
     for prereq in prerequisites:
