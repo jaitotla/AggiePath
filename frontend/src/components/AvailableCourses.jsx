@@ -1,27 +1,30 @@
+import Card from './Card'
+
 function AvailableCourses({ courses }) {
-    return (
-      <div style={{ marginBottom: "24px" }}>
-        <h2>Available to Take Next</h2>
-        <p style={{ color: "#666", fontSize: "14px", marginBottom: "8px" }}>
-          You meet the prerequisites for these courses
-        </p>
-        {courses.length === 0 ? (
-          <p style={{ color: "#666" }}>No courses available yet.</p>
-        ) : (
-          <ul style={{ paddingLeft: "20px", marginTop: "8px" }}>
-            {courses.map(course => (
-              <li key={course} style={{
-                marginBottom: "6px",
-                color: "#002855",
-                fontWeight: "500"
-              }}>
-                {course}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    )
-  }
-  
-  export default AvailableCourses
+  return (
+    <Card title="Available to Take Next">
+      <p style={{ color: "#999", fontSize: "12px", marginBottom: "10px" }}>
+        You meet the prerequisites for these courses
+      </p>
+      {courses.length === 0 ? (
+        <p style={{ color: "#999", fontSize: "13px" }}>No courses available yet.</p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0 }}>
+          {courses.map(course => (
+            <li key={course} style={{
+              padding: "6px 0",
+              borderBottom: "1px solid #f0f0f0",
+              fontSize: "14px",
+              color: "#002855",
+              fontWeight: "500"
+            }}>
+              {course}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
+export default AvailableCourses

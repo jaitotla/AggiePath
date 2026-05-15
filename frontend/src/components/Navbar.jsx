@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 
-function Navbar() {
+function Navbar({ user }) {
   const linkStyle = ({ isActive }) => ({
     textDecoration: "none",
     padding: "8px 16px",
@@ -17,13 +17,13 @@ function Navbar() {
       padding: "0 24px",
       display: "flex",
       alignItems: "center",
-      height: "56px",
+      height: "72px",
       gap: "8px"
     }}>
       <span style={{
         color: "white",
         fontWeight: "700",
-        fontSize: "16px",
+        fontSize: "18px",
         marginRight: "24px",
         letterSpacing: "1px"
       }}>
@@ -32,6 +32,16 @@ function Navbar() {
       <NavLink to="/" end style={linkStyle}>Dashboard</NavLink>
       <NavLink to="/what-if" style={linkStyle}>What-If</NavLink>
       <NavLink to="/plan" style={linkStyle}>Plan</NavLink>
+
+      {user && (
+        <span style={{
+          marginLeft: "auto",
+          color: "#ccc",
+          fontSize: "13px"
+        }}>
+          👤 {user.name}
+        </span>
+      )}
     </nav>
   )
 }

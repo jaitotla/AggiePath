@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Card from './Card'
 
 function CourseForm({ onCourseAdded }) {
   const [courseId, setCourseId] = useState('')
@@ -9,7 +10,6 @@ function CourseForm({ onCourseAdded }) {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-
     const res = await fetch('http://localhost:8000/completed-courses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -21,7 +21,6 @@ function CourseForm({ onCourseAdded }) {
         grade: grade
       })
     })
-
     if (res.ok) {
       setCourseId('')
       setTerm('')
@@ -34,39 +33,47 @@ function CourseForm({ onCourseAdded }) {
   }
 
   return (
-    <div style={{ marginBottom: "24px" }}>
-      <h2>Add Completed Course</h2>
-      {error && <p style={{ color: "red", marginTop: "8px" }}>{error}</p>}
-      <form onSubmit={handleSubmit} style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+    <Card title="Add Completed Course">
+      {error && <p style={{ color: "red", marginBottom: "8px", fontSize: "13px" }}>{error}</p>}
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <input
           type="text"
           placeholder="Course ID (e.g. ECS 36A)"
           value={courseId}
           onChange={e => setCourseId(e.target.value)}
-          style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+          style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #e0e0e0", fontSize: "14px" }}
         />
         <input
           type="text"
           placeholder="Term (e.g. Fall 2024)"
           value={term}
           onChange={e => setTerm(e.target.value)}
-          style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+          style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #e0e0e0", fontSize: "14px" }}
         />
         <input
           type="text"
           placeholder="Grade (e.g. A)"
           value={grade}
           onChange={e => setGrade(e.target.value)}
-          style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+          style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #e0e0e0", fontSize: "14px" }}
         />
         <button
           type="submit"
-          style={{ padding: "8px", backgroundColor: "#002855", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+          style={{
+            padding: "10px",
+            backgroundColor: "#002855",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontWeight: "600",
+            fontSize: "14px"
+          }}
         >
           Add Course
         </button>
       </form>
-    </div>
+    </Card>
   )
 }
 
