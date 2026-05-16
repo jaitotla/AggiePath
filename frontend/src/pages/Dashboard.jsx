@@ -54,7 +54,7 @@ function Dashboard({ studentId }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 280px", gap: "24px" }}>
         <div>
-          <CourseForm onCourseAdded={fetchData} />
+          <CourseForm onCourseAdded={fetchData} studentId={studentId} />
           <CompletedCourseList courses={completedCourses} onDelete={handleDelete} />
           <ProgressBar percentage={progress.percentage} byCategory={progress.by_category} />
         </div>

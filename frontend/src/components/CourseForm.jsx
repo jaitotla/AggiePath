@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Card from './Card'
 
-function CourseForm({ onCourseAdded }) {
+function CourseForm({ onCourseAdded, studentId }) {
   const [courseId, setCourseId] = useState('')
   const [term, setTerm] = useState('')
   const [grade, setGrade] = useState('')
@@ -15,7 +15,7 @@ function CourseForm({ onCourseAdded }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: null,
-        student_id: 1,
+        student_id: studentId,
         course_id: courseId,
         term: term,
         grade: grade
