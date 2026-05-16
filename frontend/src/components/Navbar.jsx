@@ -14,25 +14,39 @@ function Navbar({ user }) {
   return (
     <nav style={{
       backgroundColor: "#002855",
-      padding: "0 24px",
+      borderBottom: "3px solid #c4a44a",
+      padding: "0 32px",
       display: "flex",
       alignItems: "center",
       height: "72px",
       gap: "8px"
     }}>
-      <span style={{
-        color: "white",
-        fontWeight: "700",
-        fontSize: "18px",
-        marginRight: "24px",
-        letterSpacing: "1px"
-      }}>
-        🎓 AGGIEPATH
-      </span>
+      {/* Branding */}
+      <div style={{ marginRight: "32px" }}>
+        <div style={{
+          color: "white",
+          fontWeight: "800",
+          fontSize: "18px",
+          letterSpacing: "1.5px"
+        }}>
+          🎓 AGGIEPATH
+        </div>
+        <div style={{
+          color: "#c4a44a",
+          fontSize: "10px",
+          letterSpacing: "1px",
+          marginTop: "1px"
+        }}>
+          UC DAVIS
+        </div>
+      </div>
+
+      {/* Nav links */}
       <NavLink to="/" end style={linkStyle}>Dashboard</NavLink>
       <NavLink to="/what-if" style={linkStyle}>What-If</NavLink>
       <NavLink to="/plan" style={linkStyle}>Plan</NavLink>
 
+      {/* User */}
       {user && (
         <span style={{
           marginLeft: "auto",

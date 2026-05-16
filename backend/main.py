@@ -1,9 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from database import create_db_and_tables, get_session
 from models import Course, CompletedCourse, DegreeRequirement, Prerequisite
 from sqlalchemy.exc import IntegrityError
 from fastapi.middleware.cors import CORSMiddleware
+import anthropic
+import base64
+import json
 
 app = FastAPI()
 
@@ -40,15 +43,72 @@ def get_courses(session: Session = Depends(get_session)):
 
 @app.post("/completed-courses")
 def add_completed_course(completed: CompletedCourse, session: Session = Depends(get_session)):
-    # Check if the course exists first
     course = session.get(Course, completed.course_id)
     if not course:
         raise HTTPException(status_code=404, detail=f"Course '{completed.course_id}' not found")
     
     session.add(completed)
-    session.commit()
-    session.refresh(completed)
-    return completed
+    try:
+        session.commit()
+        session.refresh(completed)
+        return completed
+    except Exception:
+        session.rollback()
+        return completed
+
+@app.post("/extract-courses")
+async def extract_courses(request: Request):
+    body = await request.json()
+    image_data = body.get("image_data")
+    media_type = body.get("media_type")
+
+    client = anthropic.Anthropic()
+
+    message = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=1000,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": image_data
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": """This is a UC Davis academic transcript or course list.
+                                Extract all completed courses and return ONLY a JSON array with no other text or markdown.
+                                Each item should have: course_id, term, grade.
+                                Example format: [{"course_id": "ECS 36A", "term": "Fall 2023", "grade": "A"}]
+                                If grade is not visible use empty string. If term is not visible use empty string.
+                                Only include courses that appear completed (have a grade or are marked complete).
+                                Use the exact UC Davis course ID format with a space (e.g. ECS 36A not ECS36A)."""
+                    }
+                ]
+            }
+        ]
+    )
+
+    text = message.content[0].text.strip()
+    # Strip markdown code blocks if present
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    text = text.strip()
+    courses = json.loads(text)
+    # Normalize course IDs - remove leading zeros
+    import re
+    for course in courses:
+        # Convert ECS 036A → ECS 36A, MAT 021A → MAT 21A etc.
+        course['course_id'] = re.sub(r'(\w+)\s+0+(\d+)', r'\1 \2', course['course_id'])
+
+    return {"courses": courses}
 
 @app.get("/progress/{student_id}")
 def get_progress(student_id: int, major: str, session: Session = Depends(get_session)):

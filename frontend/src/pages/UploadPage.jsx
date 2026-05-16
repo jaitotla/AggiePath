@@ -33,42 +33,18 @@ function UploadPage({ studentId }) {
         reader.readAsDataURL(image)
       })
 
-      // Call Claude API to extract courses
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await fetch('http://localhost:8000/extract-courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: image.type,
-                  data: base64
-                }
-              },
-              {
-                type: 'text',
-                text: `This is a UC Davis academic transcript or course list. 
-Extract all completed courses and return ONLY a JSON array with no other text or markdown.
-Each item should have: course_id, term, grade.
-Example format: [{"course_id": "ECS 36A", "term": "Fall 2023", "grade": "A"}]
-If grade is not visible use empty string. If term is not visible use empty string.
-Only include courses that appear completed (have a grade or are marked complete).`
-              }
-            ]
-          }]
+        image_data: base64,
+        media_type: image.type
         })
       })
-
-      const data = await response.json()
-      const text = data.content[0].text.trim()
-      const courses = JSON.parse(text)
-      setExtractedCourses(courses)
+  
+        const data = await response.json()
+        const courses = data.courses
+        setExtractedCourses(courses)
     } catch (err) {
       setError('Could not extract courses. Please try a clearer image or add manually.')
     }
