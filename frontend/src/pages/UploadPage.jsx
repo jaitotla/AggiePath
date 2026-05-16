@@ -33,7 +33,7 @@ function UploadPage({ studentId }) {
         reader.readAsDataURL(image)
       })
 
-        const response = await fetch('http://localhost:8000/extract-courses', {
+        const response = await fetch('https://aggiepath-backend.onrender.com/extract-courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -58,7 +58,7 @@ function UploadPage({ studentId }) {
 
     for (const course of extractedCourses) {
       try {
-        await fetch('http://localhost:8000/completed-courses', {
+        await fetch('https://aggiepath-backend.onrender.com/completed-courses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

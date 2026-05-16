@@ -16,10 +16,10 @@ function Dashboard({ studentId }) {
 
   async function fetchData() {
     const [progressRes, availableRes, completedRes, planRes] = await Promise.all([
-      fetch(`http://localhost:8000/progress/${studentId}?major=${MAJOR}`),
-      fetch(`http://localhost:8000/available-courses/${studentId}?major=${MAJOR}`),
-      fetch(`http://localhost:8000/completed-courses/${studentId}`),
-      fetch(`http://localhost:8000/plan/${studentId}?major=${MAJOR}&units_per_quarter=16&max_required_per_quarter=3`)
+      fetch(`https://aggiepath-backend.onrender.com/progress/${studentId}?major=${MAJOR}`),
+      fetch(`https://aggiepath-backend.onrender.com/available-courses/${studentId}?major=${MAJOR}`),
+      fetch(`https://aggiepath-backend.onrender.com/completed-courses/${studentId}`),
+      fetch(`https://aggiepath-backend.onrender.com/plan/${studentId}?major=${MAJOR}&units_per_quarter=16&max_required_per_quarter=3`)
     ])
     const [progressData, availableData, completedData, planData] = await Promise.all([
       progressRes.json(),
@@ -34,7 +34,7 @@ function Dashboard({ studentId }) {
   }
 
   async function handleDelete(recordId) {
-    await fetch(`http://localhost:8000/completed-courses/${recordId}`, {
+    await fetch(`https://aggiepath-backend.onrender.com/completed-courses/${recordId}`, {
       method: 'DELETE'
     })
     fetchData()

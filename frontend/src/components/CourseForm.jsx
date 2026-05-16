@@ -10,7 +10,7 @@ function CourseForm({ onCourseAdded, studentId }) {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    const res = await fetch('http://localhost:8000/completed-courses', {
+    const res = await fetch('https://aggiepath-backend.onrender.com/completed-courses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

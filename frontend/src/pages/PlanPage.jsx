@@ -10,7 +10,7 @@ function PlanPage({ studentId }) {
 
   async function fetchPlan() {
     const res = await fetch(
-      `http://localhost:8000/plan/${studentId}?major=${MAJOR}&units_per_quarter=${unitsPerQuarter}&max_required_per_quarter=${maxRequired}`
+      `https://aggiepath-backend.onrender.com/plan/${studentId}?major=${MAJOR}&units_per_quarter=${unitsPerQuarter}&max_required_per_quarter=${maxRequired}`
     )
     const data = await res.json()
     setPlan(data)

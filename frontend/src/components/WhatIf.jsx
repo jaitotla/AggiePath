@@ -12,7 +12,7 @@ function WhatIf({ studentId }) {
     if (!selectedProgram) return
     setLoading(true)
     const res = await fetch(
-      `http://localhost:8000/what-if/${studentId}?major=Computer Science&add_program=${encodeURIComponent(selectedProgram)}`
+      `https://aggiepath-backend.onrender.com/what-if/${studentId}?major=Computer Science&add_program=${encodeURIComponent(selectedProgram)}`
     )
     const data = await res.json()
     setResult(data)
