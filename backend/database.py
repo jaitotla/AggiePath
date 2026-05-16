@@ -1,6 +1,11 @@
+import os
 from sqlmodel import SQLModel, create_engine, Session
 
-DATABASE_URL = "sqlite:///aggiepath.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///aggiepath.db")
+
+# Render uses postgres:// but SQLAlchemy needs postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL, echo=True)
 
@@ -10,4 +15,3 @@ def create_db_and_tables():
 def get_session():
     with Session(engine) as session:
         yield session
-
