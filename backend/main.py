@@ -48,7 +48,17 @@ def get_courses(session: Session = Depends(get_session)):
 def add_completed_course(completed: CompletedCourse, session: Session = Depends(get_session)):
     course = session.get(Course, completed.course_id)
     if not course:
-        raise HTTPException(status_code=404, detail=f"Course '{completed.course_id}' not found")
+        # A course not already in our catalog isn't necessarily invalid — it's
+        # often a real GE, elective, or AP-credit course that was never a CS/
+        # Stats requirement and so was never pre-seeded. Auto-create a minimal
+        # record instead of rejecting, so any course a student actually took
+        # can be logged. Units default to 4 (UC Davis's typical course load)
+        # since the real value isn't known for an unseeded course; name falls
+        # back to the course_id itself. This doesn't affect major-requirement
+        # progress, since that's driven separately by DegreeRequirement rows.
+        course = Course(course_id=completed.course_id, name=completed.course_id, units=4)
+        session.add(course)
+        session.flush()
 
     session.add(completed)
     try:
