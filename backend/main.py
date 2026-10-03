@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import anthropic
 import base64
 import json
+import re
 
 app = FastAPI()
 
@@ -48,14 +49,6 @@ def get_courses(session: Session = Depends(get_session)):
 def add_completed_course(completed: CompletedCourse, session: Session = Depends(get_session)):
     course = session.get(Course, completed.course_id)
     if not course:
-        # A course not already in our catalog isn't necessarily invalid — it's
-        # often a real GE, elective, or AP-credit course that was never a CS/
-        # Stats requirement and so was never pre-seeded. Auto-create a minimal
-        # record instead of rejecting, so any course a student actually took
-        # can be logged. Units default to 4 (UC Davis's typical course load)
-        # since the real value isn't known for an unseeded course; name falls
-        # back to the course_id itself. This doesn't affect major-requirement
-        # progress, since that's driven separately by DegreeRequirement rows.
         course = Course(course_id=completed.course_id, name=completed.course_id, units=4)
         session.add(course)
         session.flush()
@@ -108,30 +101,19 @@ async def extract_courses(request: Request):
     )
 
     text = message.content[0].text.strip()
-    # Strip markdown code blocks if present
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
     text = text.strip()
     courses = json.loads(text)
-    # Normalize course IDs - remove leading zeros
-    import re
     for course in courses:
-        # Convert ECS 036A → ECS 36A, MAT 021A → MAT 21A etc.
         course['course_id'] = re.sub(r'(\w+)\s+0+(\d+)', r'\1 \2', course['course_id'])
 
     return {"courses": courses}
 
 
 def prereq_satisfied(prereq_id: str, completed_ids: set) -> bool:
-    """
-    A prereq_id can represent a single course ("ECS 36A") or an OR-style
-    alternative pair encoded as "STA 013/STA 032". For a compound id, the
-    requirement is satisfied if the student has completed ANY one of the
-    alternatives, logged under its own real course_id, not the combined
-    placeholder string.
-    """
     if "/" in prereq_id:
         alternatives = [alt.strip() for alt in prereq_id.split("/")]
         return any(alt in completed_ids for alt in alternatives)
@@ -140,26 +122,22 @@ def prereq_satisfied(prereq_id: str, completed_ids: set) -> bool:
 
 @app.get("/progress/{student_id}")
 def get_progress(student_id: int, major: str, session: Session = Depends(get_session)):
-    # Get all required courses for this major
     required = session.exec(
         select(DegreeRequirement).where(DegreeRequirement.major_name == major)
     ).all()
 
-    # Get all completed courses for this student
     completed = session.exec(
         select(CompletedCourse).where(CompletedCourse.student_id == student_id)
     ).all()
 
     completed_ids = set(c.course_id for c in completed)
 
-    # Group requirements by category
     categories = {}
     for req in required:
         if req.category not in categories:
             categories[req.category] = []
         categories[req.category].append(req.course_id)
 
-    # Calculate progress per category
     category_progress = {}
     for category, course_ids in categories.items():
         required_set = set(course_ids)
@@ -171,7 +149,6 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
             "remaining": list(remaining)
         }
 
-    # Calculate overall progress
     required_ids = set(r.course_id for r in required)
     total_required = len(required_ids)
     total_completed = len(required_ids & completed_ids)
@@ -192,25 +169,21 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
 
 @app.get("/what-if/{student_id}")
 def what_if(student_id: int, major: str, add_program: str, session: Session = Depends(get_session)):
-    # Get current major requirements
     current_required = session.exec(
         select(DegreeRequirement).where(DegreeRequirement.major_name == major)
     ).all()
     current_ids = set(r.course_id for r in current_required)
 
-    # Get add-on program requirements
     addon_required = session.exec(
         select(DegreeRequirement).where(DegreeRequirement.major_name == add_program)
     ).all()
     addon_ids = set(r.course_id for r in addon_required)
 
-    # Get completed courses
     completed = session.exec(
         select(CompletedCourse).where(CompletedCourse.student_id == student_id)
     ).all()
     completed_ids = set(c.course_id for c in completed)
 
-    # Get all prerequisites
     all_prereqs = session.exec(select(Prerequisite)).all()
     prereq_map = {}
     for p in all_prereqs:
@@ -218,19 +191,10 @@ def what_if(student_id: int, major: str, add_program: str, session: Session = De
             prereq_map[p.course_id] = set()
         prereq_map[p.course_id].add(p.prereq_id)
 
-    # Combined requirements
     combined_ids = current_ids | addon_ids
-
-    # Overlap — courses that count for both
     overlap = current_ids & addon_ids
-
-    # Extra courses needed by adding the program
     extra_courses = addon_ids - current_ids - completed_ids
 
-    # Find prereqs for extra courses that aren't already covered.
-    # Uses prereq_satisfied() so an OR-style prereq (e.g. "STA 013/STA 032")
-    # counts as covered if either alternative was completed, not just an
-    # exact string match on the combined id.
     extra_prereqs = set()
     for course_id in extra_courses:
         prereqs = prereq_map.get(course_id, set())
@@ -243,7 +207,6 @@ def what_if(student_id: int, major: str, add_program: str, session: Session = De
             if not already_covered:
                 extra_prereqs.add(prereq)
 
-    # What's left in each scenario
     current_remaining = current_ids - completed_ids
     combined_remaining = combined_ids - completed_ids
 
@@ -261,25 +224,18 @@ def what_if(student_id: int, major: str, add_program: str, session: Session = De
 
 @app.get("/available-courses/{student_id}")
 def get_available_courses(student_id: int, major: str, session: Session = Depends(get_session)):
-    # Step 1: Get all required course IDs for this major
     required = session.exec(
         select(DegreeRequirement).where(DegreeRequirement.major_name == major)
     ).all()
     required_ids = set(r.course_id for r in required)
 
-    # Step 2: Get all completed course IDs for this student
     completed = session.exec(
         select(CompletedCourse).where(CompletedCourse.student_id == student_id)
     ).all()
     completed_ids = set(c.course_id for c in completed)
 
-    # Step 3: Remaining = required - completed
     remaining_ids = required_ids - completed_ids
 
-    # Step 4: For each remaining course, check if all prereqs are satisfied.
-    # prereq_satisfied() handles OR-style prereqs (e.g. "STA 013/STA 032")
-    # by accepting either alternative, instead of requiring the literal
-    # combined string to appear in completed_ids.
     available = []
     for course_id in remaining_ids:
         prereqs = session.exec(
@@ -315,40 +271,33 @@ def get_completed_courses(student_id: int, session: Session = Depends(get_sessio
 
 @app.get("/plan/{student_id}")
 def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_required_per_quarter: int = 3, session: Session = Depends(get_session)):
-    # Get all required course IDs
     required = session.exec(
         select(DegreeRequirement).where(DegreeRequirement.major_name == major)
     ).all()
     required_ids = set(r.course_id for r in required)
 
-    # Get all completed course IDs
     completed = session.exec(
         select(CompletedCourse).where(CompletedCourse.student_id == student_id)
     ).all()
     completed_ids = set(c.course_id for c in completed)
 
-    # Get all courses to know their units
     all_courses = session.exec(select(Course)).all()
     course_units = {c.course_id: c.units for c in all_courses}
 
-    # Get all prerequisites
     all_prereqs = session.exec(select(Prerequisite)).all()
 
-    # Build prereq map: course → set of its prereqs
     prereq_map = {}
     for p in all_prereqs:
         if p.course_id not in prereq_map:
             prereq_map[p.course_id] = set()
         prereq_map[p.course_id].add(p.prereq_id)
 
-    # Build dependent map: course → set of courses that need it
     dependent_map = {}
     for p in all_prereqs:
         if p.prereq_id not in dependent_map:
             dependent_map[p.prereq_id] = set()
         dependent_map[p.prereq_id].add(p.course_id)
 
-    # Calculate priority score — how many required courses does this unlock?
     def priority_score(course_id, visited=None):
         if visited is None:
             visited = set()
@@ -362,17 +311,12 @@ def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_requi
             score += priority_score(dep, visited)
         return score
 
-    # Simulate quarters
     scheduled = set(completed_ids)
     remaining = required_ids - completed_ids
     quarters = []
-    max_quarters = 20  # safety limit
+    max_quarters = 20
 
     while remaining and len(quarters) < max_quarters:
-        # Find available courses this quarter.
-        # prereq_satisfied() lets an OR-style prereq (e.g. "STA 013/STA 032")
-        # be met by either alternative, consistent with get_available_courses
-        # and what_if above.
         available = []
         for course_id in remaining:
             prereqs = prereq_map.get(course_id, set())
@@ -380,12 +324,10 @@ def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_requi
                 available.append(course_id)
 
         if not available:
-            break  # No progress possible — shouldn't happen with valid data
+            break
 
-        # Sort by priority score descending
         available.sort(key=lambda c: priority_score(c), reverse=True)
 
-        # Fill quarter with required courses up to max_required_per_quarter
         quarter_courses = []
         quarter_units = 0
 
@@ -397,7 +339,6 @@ def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_requi
                 quarter_courses.append(course_id)
                 quarter_units += units
 
-        # Fill remaining slots with GE/Elective placeholders
         placeholders = []
         while quarter_units + 4 <= units_per_quarter:
             placeholders.append("GE/Elective")
@@ -412,7 +353,6 @@ def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_requi
             "units": quarter_units
         })
 
-        # Mark as scheduled for next iteration
         for c in quarter_courses:
             scheduled.add(c)
             remaining.discard(c)
@@ -427,72 +367,60 @@ def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_requi
 
 @app.post("/seed")
 def seed_data(session: Session = Depends(get_session)):
-    # First seed all courses
     courses = [
-        # Math
         Course(course_id="MAT 21A", name="Calculus", units=4),
         Course(course_id="MAT 21B", name="Calculus", units=4),
         Course(course_id="MAT 21C", name="Calculus", units=4),
         Course(course_id="MAT 22A", name="Linear Algebra", units=3),
-        # Lower Division CS
         Course(course_id="ECS 20", name="Discrete Mathematics for CS", units=4),
         Course(course_id="ECS 36A", name="Programming and Problem Solving", units=4),
         Course(course_id="ECS 36B", name="Software Development and OOP", units=4),
         Course(course_id="ECS 36C", name="Data Structures and Algorithms", units=4),
         Course(course_id="ECS 50", name="Computer Organization", units=4),
-        # Upper Division CS
         Course(course_id="ECS 120", name="Theory of Computation", units=4),
         Course(course_id="ECS 122A", name="Algorithm Design and Analysis", units=4),
         Course(course_id="ECS 132", name="Probability and Statistical Modeling", units=4),
         Course(course_id="ECS 140A", name="Programming Languages", units=4),
         Course(course_id="ECS 150", name="Operating Systems", units=4),
         Course(course_id="ECS 154A", name="Computer Architecture", units=4),
-        # Science
         Course(course_id="PHY 9A", name="Classical Physics", units=4),
         Course(course_id="PHY 9B", name="Classical Physics", units=4),
         Course(course_id="PHY 9C", name="Classical Physics", units=4),
-        # Statistics Minor courses
         Course(course_id="STA 106", name="Applied Statistical Methods: ANOVA", units=4),
         Course(course_id="STA 108", name="Applied Statistical Methods: Regression", units=4),
         Course(course_id="STA 131A", name="Introduction to Probability Theory", units=4),
         Course(course_id="STA 131B", name="Mathematical Statistics", units=4),
         Course(course_id="STA 141A", name="Fundamentals of Statistical Data Science", units=4),
-        # STA 013 and STA 032 are the two real, individually completable
-        # courses behind the "STA 013/STA 032" OR-style prerequisite. A
-        # student takes one of these, not the combined placeholder string,
-        # so both need their own real Course row to be logged as completed.
         Course(course_id="STA 013", name="Elementary Statistics", units=4),
         Course(course_id="STA 032", name="Gateway to Statistical Data Science", units=4),
     ]
 
+    # Skip courses that already exist
     for course in courses:
-        session.add(course)
+        existing = session.get(Course, course.course_id)
+        if not existing:
+            session.add(course)
+    session.commit()
 
-    # Then seed degree requirements
     requirements = [
-        # Math
         DegreeRequirement(major_name="Computer Science", course_id="MAT 21A", category="math"),
         DegreeRequirement(major_name="Computer Science", course_id="MAT 21B", category="math"),
         DegreeRequirement(major_name="Computer Science", course_id="MAT 21C", category="math"),
         DegreeRequirement(major_name="Computer Science", course_id="MAT 22A", category="math"),
-        # Lower Division CS
         DegreeRequirement(major_name="Computer Science", course_id="ECS 20", category="lower_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 36A", category="lower_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 36B", category="lower_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 36C", category="lower_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 50", category="lower_div_cs"),
-        # Upper Division CS
         DegreeRequirement(major_name="Computer Science", course_id="ECS 120", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 122A", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 132", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 140A", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 150", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 154A", category="upper_div_cs"),
-        # Science
         DegreeRequirement(major_name="Computer Science", course_id="PHY 9A", category="science"),
         DegreeRequirement(major_name="Computer Science", course_id="PHY 9B", category="science"),
         DegreeRequirement(major_name="Computer Science", course_id="PHY 9C", category="science"),
-        # Statistics Minor requirements
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 106", category="core"),
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 108", category="core"),
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 131A", category="series"),
@@ -500,50 +428,52 @@ def seed_data(session: Session = Depends(get_session)):
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 141A", category="elective"),
     ]
 
+    # Skip requirements that already exist
+    existing_reqs = session.exec(select(DegreeRequirement)).all()
+    existing_req_pairs = {(r.major_name, r.course_id) for r in existing_reqs}
     for req in requirements:
-        session.add(req)
+        if (req.major_name, req.course_id) not in existing_req_pairs:
+            session.add(req)
+    session.commit()
 
     prerequisites = [
-    # MAT chain
-    Prerequisite(course_id="MAT 21B", prereq_id="MAT 21A"),
-    Prerequisite(course_id="MAT 21C", prereq_id="MAT 21B"),
-    Prerequisite(course_id="MAT 22A", prereq_id="MAT 21C"),
-    # ECS 36 chain
-    Prerequisite(course_id="ECS 36B", prereq_id="ECS 36A"),
-    Prerequisite(course_id="ECS 36C", prereq_id="ECS 20"),
-    Prerequisite(course_id="ECS 36C", prereq_id="ECS 36B"),
-    Prerequisite(course_id="ECS 50",  prereq_id="ECS 36B"),
-    # Upper division
-    Prerequisite(course_id="ECS 122A", prereq_id="ECS 20"),
-    Prerequisite(course_id="ECS 122A", prereq_id="ECS 36C"),
-    Prerequisite(course_id="ECS 120",  prereq_id="ECS 20"),
-    Prerequisite(course_id="ECS 140A", prereq_id="ECS 20"),
-    Prerequisite(course_id="ECS 140A", prereq_id="ECS 50"),
-    Prerequisite(course_id="ECS 140A", prereq_id="ECS 36C"),
-    Prerequisite(course_id="ECS 154A", prereq_id="ECS 50"),
-    Prerequisite(course_id="ECS 150",  prereq_id="ECS 36C"),
-    Prerequisite(course_id="ECS 150",  prereq_id="ECS 154A"),
-    Prerequisite(course_id="ECS 132",  prereq_id="ECS 20"),
-    Prerequisite(course_id="ECS 132",  prereq_id="MAT 21C"),
-    Prerequisite(course_id="ECS 132",  prereq_id="ECS 36B"),
-    Prerequisite(course_id="ECS 132",  prereq_id="MAT 22A"),
-    # PHY chain
-    Prerequisite(course_id="PHY 9A",  prereq_id="MAT 21B"),
-    Prerequisite(course_id="PHY 9B",  prereq_id="PHY 9A"),
-    Prerequisite(course_id="PHY 9B",  prereq_id="MAT 21C"),
-    Prerequisite(course_id="PHY 9C",  prereq_id="PHY 9B"),
-    Prerequisite(course_id="PHY 9C",  prereq_id="MAT 22A"),
-    # Statistics Minor prerequisites — stays as the compound "STA 013/STA 032"
-    # id here; prereq_satisfied() is what expands it into its alternatives
-    # at check time.
-    Prerequisite(course_id="STA 131B", prereq_id="STA 131A"),
-    Prerequisite(course_id="STA 141A", prereq_id="STA 131A"),
-    Prerequisite(course_id="STA 106",  prereq_id="STA 013/STA 032"),
-    Prerequisite(course_id="STA 108",  prereq_id="STA 013/STA 032"),
+        Prerequisite(course_id="MAT 21B", prereq_id="MAT 21A"),
+        Prerequisite(course_id="MAT 21C", prereq_id="MAT 21B"),
+        Prerequisite(course_id="MAT 22A", prereq_id="MAT 21C"),
+        Prerequisite(course_id="ECS 36B", prereq_id="ECS 36A"),
+        Prerequisite(course_id="ECS 36C", prereq_id="ECS 20"),
+        Prerequisite(course_id="ECS 36C", prereq_id="ECS 36B"),
+        Prerequisite(course_id="ECS 50",  prereq_id="ECS 36B"),
+        Prerequisite(course_id="ECS 122A", prereq_id="ECS 20"),
+        Prerequisite(course_id="ECS 122A", prereq_id="ECS 36C"),
+        Prerequisite(course_id="ECS 120",  prereq_id="ECS 20"),
+        Prerequisite(course_id="ECS 140A", prereq_id="ECS 20"),
+        Prerequisite(course_id="ECS 140A", prereq_id="ECS 50"),
+        Prerequisite(course_id="ECS 140A", prereq_id="ECS 36C"),
+        Prerequisite(course_id="ECS 154A", prereq_id="ECS 50"),
+        Prerequisite(course_id="ECS 150",  prereq_id="ECS 36C"),
+        Prerequisite(course_id="ECS 150",  prereq_id="ECS 154A"),
+        Prerequisite(course_id="ECS 132",  prereq_id="ECS 20"),
+        Prerequisite(course_id="ECS 132",  prereq_id="MAT 21C"),
+        Prerequisite(course_id="ECS 132",  prereq_id="ECS 36B"),
+        Prerequisite(course_id="ECS 132",  prereq_id="MAT 22A"),
+        Prerequisite(course_id="PHY 9A",  prereq_id="MAT 21B"),
+        Prerequisite(course_id="PHY 9B",  prereq_id="PHY 9A"),
+        Prerequisite(course_id="PHY 9B",  prereq_id="MAT 21C"),
+        Prerequisite(course_id="PHY 9C",  prereq_id="PHY 9B"),
+        Prerequisite(course_id="PHY 9C",  prereq_id="MAT 22A"),
+        Prerequisite(course_id="STA 131B", prereq_id="STA 131A"),
+        Prerequisite(course_id="STA 141A", prereq_id="STA 131A"),
+        Prerequisite(course_id="STA 106",  prereq_id="STA 013/STA 032"),
+        Prerequisite(course_id="STA 108",  prereq_id="STA 013/STA 032"),
     ]
 
+    # Skip prerequisites that already exist
+    existing_prereqs = session.exec(select(Prerequisite)).all()
+    existing_prereq_pairs = {(p.course_id, p.prereq_id) for p in existing_prereqs}
     for prereq in prerequisites:
-        session.add(prereq)
-
+        if (prereq.course_id, prereq.prereq_id) not in existing_prereq_pairs:
+            session.add(prereq)
     session.commit()
+
     return {"message": f"Seeded {len(courses)} courses, {len(requirements)} requirements, {len(prerequisites)} prerequisites"}
