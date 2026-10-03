@@ -175,10 +175,15 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
     all_courses = session.exec(select(Course)).all()
     course_units = {c.course_id: c.units for c in all_courses}
 
-    cs_electives = [
-        c.course_id for c in completed
-        if c.course_id.startswith("ECS") and c.course_id not in required_ids
-    ]
+    cs_electives = []
+    for c in completed:
+        if c.course_id.startswith("ECS") and c.course_id not in required_ids:
+            try:
+                number = int(re.sub(r'[^0-9]', '', c.course_id))
+                if number >= 100:
+                    cs_electives.append(c.course_id)
+            except ValueError:
+                pass
 
     # Overall progress — core requirements + elective groups
     total_required = len(required_ids)
