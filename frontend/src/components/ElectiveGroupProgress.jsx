@@ -35,7 +35,7 @@ function ElectiveGroupProgress({ electiveGroups }) {
           )}
           {data.remaining_needed > 0 && (
             <div style={{ fontSize: "12px", color: "#999", marginTop: "2px" }}>
-              Need {data.remaining_needed} more from: PHY 9A/9B/9C, CHE 2A/2B/2C, BIO 2A/2B/2C
+              Need {data.remaining_needed} more from: PHY 9A/9B/9C, CHE 2A/2B/2C, BIS 2A/2B/2C, BIO 1/2/3
             </div>
           )}
         </div>

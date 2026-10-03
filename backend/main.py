@@ -440,6 +440,12 @@ def seed_data(session: Session = Depends(get_session)):
         Course(course_id="STA 141A", name="Fundamentals of Statistical Data Science", units=4),
         Course(course_id="STA 013", name="Elementary Statistics", units=4),
         Course(course_id="STA 032", name="Gateway to Statistical Data Science", units=4),
+        Course(course_id="BIS 2A", name="Introduction to Biology", units=5),
+        Course(course_id="BIS 2B", name="Introduction to Biology", units=5),
+        Course(course_id="BIS 2C", name="Introduction to Biology", units=5),
+        Course(course_id="BIO 1", name="Introduction to Biology", units=3),
+        Course(course_id="BIO 2", name="Introduction to Biology", units=3),
+        Course(course_id="BIO 3", name="Introduction to Biology", units=3)
     ]
 
     for course in courses:
@@ -518,16 +524,22 @@ def seed_data(session: Session = Depends(get_session)):
     session.commit()
 
     elective_groups = [
+        # Science: pick any 3 from PHY/CHE/BIS/BIO series
         ElectiveGroup(major_name="Computer Science", group_name="science", course_id="PHY 9A", courses_needed=3),
         ElectiveGroup(major_name="Computer Science", group_name="science", course_id="PHY 9B", courses_needed=3),
         ElectiveGroup(major_name="Computer Science", group_name="science", course_id="PHY 9C", courses_needed=3),
         ElectiveGroup(major_name="Computer Science", group_name="science", course_id="CHE 2A", courses_needed=3),
         ElectiveGroup(major_name="Computer Science", group_name="science", course_id="CHE 2B", courses_needed=3),
         ElectiveGroup(major_name="Computer Science", group_name="science", course_id="CHE 2C", courses_needed=3),
-        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2A", courses_needed=3),
-        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2B", courses_needed=3),
-        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2C", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIS 2A", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIS 2B", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIS 2C", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 1", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 3", courses_needed=3),
     ]
+
+
 
     existing_egs = session.exec(select(ElectiveGroup)).all()
     existing_eg_pairs = {(e.major_name, e.group_name, e.course_id) for e in existing_egs}
