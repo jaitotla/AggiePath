@@ -23,3 +23,10 @@ class Prerequisite(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     course_id: str
     prereq_id: str
+
+class ElectiveGroup(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    major_name: str
+    group_name: str
+    course_id: str
+    courses_needed: int

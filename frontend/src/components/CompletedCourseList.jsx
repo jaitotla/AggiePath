@@ -4,8 +4,8 @@ function CompletedCourseList({ courses, onDelete }) {
   if (courses.length === 0) return null
 
   return (
-    <Card title="Completed Courses">
-      <ul style={{ listStyle: "none", padding: 0 }}>
+    <Card title={`Completed Courses (${courses.length})`}>
+      <ul style={{ listStyle: "none", padding: 0, maxHeight: "300px", overflowY: "auto" }}>
         {courses.map(course => (
           <li key={course.id} style={{
             display: "flex",
@@ -29,7 +29,8 @@ function CompletedCourseList({ courses, onDelete }) {
                 color: "#bbb",
                 cursor: "pointer",
                 fontSize: "12px",
-                padding: "2px 8px"
+                padding: "2px 8px",
+                flexShrink: 0
               }}
             >
               ✕

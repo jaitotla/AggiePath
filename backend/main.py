@@ -1,11 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from database import create_db_and_tables, get_session
-from models import Course, CompletedCourse, DegreeRequirement, Prerequisite
+from models import Course, CompletedCourse, DegreeRequirement, Prerequisite, ElectiveGroup
 from sqlalchemy.exc import IntegrityError
 from fastapi.middleware.cors import CORSMiddleware
 import anthropic
-import base64
 import json
 import re
 
@@ -132,6 +131,7 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
 
     completed_ids = set(c.course_id for c in completed)
 
+    # Category progress
     categories = {}
     for req in required:
         if req.category not in categories:
@@ -149,11 +149,45 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
             "remaining": list(remaining)
         }
 
+    # Elective group progress (e.g. science: pick 3 of 9)
+    elective_groups_raw = session.exec(
+        select(ElectiveGroup).where(ElectiveGroup.major_name == major)
+    ).all()
+
+    elective_group_progress = {}
+    for eg in elective_groups_raw:
+        if eg.group_name not in elective_group_progress:
+            elective_group_progress[eg.group_name] = {
+                "courses_needed": eg.courses_needed,
+                "options": [],
+                "completed": [],
+                "remaining_needed": eg.courses_needed
+            }
+        elective_group_progress[eg.group_name]["options"].append(eg.course_id)
+
+    for group_name, data in elective_group_progress.items():
+        done = [c for c in data["options"] if c in completed_ids]
+        data["completed"] = done
+        data["remaining_needed"] = max(0, data["courses_needed"] - len(done))
+
+    # CS electives: completed ECS courses not in requirements
     required_ids = set(r.course_id for r in required)
-    total_required = len(required_ids)
-    total_completed = len(required_ids & completed_ids)
     all_courses = session.exec(select(Course)).all()
     course_units = {c.course_id: c.units for c in all_courses}
+
+    cs_electives = [
+        c.course_id for c in completed
+        if c.course_id.startswith("ECS") and c.course_id not in required_ids
+    ]
+
+    # Overall progress — core requirements + elective groups
+    total_required = len(required_ids)
+    total_completed = len(required_ids & completed_ids)
+
+    for group_name, data in elective_group_progress.items():
+        total_required += data["courses_needed"]
+        total_completed += min(len(data["completed"]), data["courses_needed"])
+
     units_completed = sum(course_units.get(c, 0) for c in completed_ids if c in required_ids)
     percentage = round((total_completed / total_required) * 100, 1) if total_required > 0 else 0
 
@@ -164,7 +198,9 @@ def get_progress(student_id: int, major: str, session: Session = Depends(get_ses
         "total_completed": total_completed,
         "units_completed": units_completed,
         "percentage": percentage,
-        "by_category": category_progress
+        "by_category": category_progress,
+        "elective_groups": elective_group_progress,
+        "cs_electives": cs_electives
     }
 
 @app.get("/what-if/{student_id}")
@@ -386,6 +422,12 @@ def seed_data(session: Session = Depends(get_session)):
         Course(course_id="PHY 9A", name="Classical Physics", units=4),
         Course(course_id="PHY 9B", name="Classical Physics", units=4),
         Course(course_id="PHY 9C", name="Classical Physics", units=4),
+        Course(course_id="CHE 2A", name="General Chemistry", units=5),
+        Course(course_id="CHE 2B", name="General Chemistry", units=5),
+        Course(course_id="CHE 2C", name="General Chemistry", units=5),
+        Course(course_id="BIO 2A", name="Introduction to Biology", units=5),
+        Course(course_id="BIO 2B", name="Introduction to Biology", units=5),
+        Course(course_id="BIO 2C", name="Introduction to Biology", units=5),
         Course(course_id="STA 106", name="Applied Statistical Methods: ANOVA", units=4),
         Course(course_id="STA 108", name="Applied Statistical Methods: Regression", units=4),
         Course(course_id="STA 131A", name="Introduction to Probability Theory", units=4),
@@ -395,7 +437,6 @@ def seed_data(session: Session = Depends(get_session)):
         Course(course_id="STA 032", name="Gateway to Statistical Data Science", units=4),
     ]
 
-    # Skip courses that already exist
     for course in courses:
         existing = session.get(Course, course.course_id)
         if not existing:
@@ -418,9 +459,6 @@ def seed_data(session: Session = Depends(get_session)):
         DegreeRequirement(major_name="Computer Science", course_id="ECS 140A", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 150", category="upper_div_cs"),
         DegreeRequirement(major_name="Computer Science", course_id="ECS 154A", category="upper_div_cs"),
-        DegreeRequirement(major_name="Computer Science", course_id="PHY 9A", category="science"),
-        DegreeRequirement(major_name="Computer Science", course_id="PHY 9B", category="science"),
-        DegreeRequirement(major_name="Computer Science", course_id="PHY 9C", category="science"),
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 106", category="core"),
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 108", category="core"),
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 131A", category="series"),
@@ -428,7 +466,6 @@ def seed_data(session: Session = Depends(get_session)):
         DegreeRequirement(major_name="Statistics Minor", course_id="STA 141A", category="elective"),
     ]
 
-    # Skip requirements that already exist
     existing_reqs = session.exec(select(DegreeRequirement)).all()
     existing_req_pairs = {(r.major_name, r.course_id) for r in existing_reqs}
     for req in requirements:
@@ -468,7 +505,6 @@ def seed_data(session: Session = Depends(get_session)):
         Prerequisite(course_id="STA 108",  prereq_id="STA 013/STA 032"),
     ]
 
-    # Skip prerequisites that already exist
     existing_prereqs = session.exec(select(Prerequisite)).all()
     existing_prereq_pairs = {(p.course_id, p.prereq_id) for p in existing_prereqs}
     for prereq in prerequisites:
@@ -476,4 +512,23 @@ def seed_data(session: Session = Depends(get_session)):
             session.add(prereq)
     session.commit()
 
-    return {"message": f"Seeded {len(courses)} courses, {len(requirements)} requirements, {len(prerequisites)} prerequisites"}
+    elective_groups = [
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="PHY 9A", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="PHY 9B", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="PHY 9C", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="CHE 2A", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="CHE 2B", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="CHE 2C", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2A", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2B", courses_needed=3),
+        ElectiveGroup(major_name="Computer Science", group_name="science", course_id="BIO 2C", courses_needed=3),
+    ]
+
+    existing_egs = session.exec(select(ElectiveGroup)).all()
+    existing_eg_pairs = {(e.major_name, e.group_name, e.course_id) for e in existing_egs}
+    for eg in elective_groups:
+        if (eg.major_name, eg.group_name, eg.course_id) not in existing_eg_pairs:
+            session.add(eg)
+    session.commit()
+
+    return {"message": f"Seeded {len(courses)} courses, {len(requirements)} requirements, {len(prerequisites)} prerequisites, {len(elective_groups)} elective group entries"}
