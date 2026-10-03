@@ -5,6 +5,8 @@ import CourseForm from '../components/CourseForm'
 import AvailableCourses from '../components/AvailableCourses'
 import CompletedCourseList from '../components/CompletedCourseList'
 import StatsPanel from '../components/StatsPanel'
+import ElectiveGroupProgress from '../components/ElectiveGroupProgress'
+import CSElectives from '../components/CSElectives'
 
 const MAJOR = "Computer Science"
 
@@ -69,6 +71,8 @@ function Dashboard({ studentId }) {
             unitsCompleted={progress.units_completed}
             quartersToGraduation={plan?.quarters_to_graduation}
           />
+          <ElectiveGroupProgress electiveGroups={progress.elective_groups} />
+          <CSElectives electives={progress.cs_electives} />
         </div>
       </div>
     </div>
