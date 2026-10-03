@@ -64,6 +64,7 @@ function Dashboard({ studentId }) {
         <div>
           <AvailableCourses courses={available} />
           <RemainingCourses byCategory={progress.by_category} />
+          <ElectiveGroupProgress electiveGroups={progress.elective_groups} />
         </div>
 
         <div>
@@ -71,7 +72,6 @@ function Dashboard({ studentId }) {
             unitsCompleted={progress.units_completed}
             quartersToGraduation={plan?.quarters_to_graduation}
           />
-          <ElectiveGroupProgress electiveGroups={progress.elective_groups} />
           <CSElectives electives={progress.cs_electives} />
         </div>
       </div>
