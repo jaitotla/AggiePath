@@ -49,7 +49,7 @@ def add_completed_course(completed: CompletedCourse, session: Session = Depends(
     course = session.get(Course, completed.course_id)
     if not course:
         raise HTTPException(status_code=404, detail=f"Course '{completed.course_id}' not found")
-    
+
     session.add(completed)
     try:
         session.commit()
@@ -112,6 +112,21 @@ async def extract_courses(request: Request):
         course['course_id'] = re.sub(r'(\w+)\s+0+(\d+)', r'\1 \2', course['course_id'])
 
     return {"courses": courses}
+
+
+def prereq_satisfied(prereq_id: str, completed_ids: set) -> bool:
+    """
+    A prereq_id can represent a single course ("ECS 36A") or an OR-style
+    alternative pair encoded as "STA 013/STA 032". For a compound id, the
+    requirement is satisfied if the student has completed ANY one of the
+    alternatives, logged under its own real course_id, not the combined
+    placeholder string.
+    """
+    if "/" in prereq_id:
+        alternatives = [alt.strip() for alt in prereq_id.split("/")]
+        return any(alt in completed_ids for alt in alternatives)
+    return prereq_id in completed_ids
+
 
 @app.get("/progress/{student_id}")
 def get_progress(student_id: int, major: str, session: Session = Depends(get_session)):
@@ -202,12 +217,20 @@ def what_if(student_id: int, major: str, add_program: str, session: Session = De
     # Extra courses needed by adding the program
     extra_courses = addon_ids - current_ids - completed_ids
 
-    # Find prereqs for extra courses that aren't already covered
+    # Find prereqs for extra courses that aren't already covered.
+    # Uses prereq_satisfied() so an OR-style prereq (e.g. "STA 013/STA 032")
+    # counts as covered if either alternative was completed, not just an
+    # exact string match on the combined id.
     extra_prereqs = set()
     for course_id in extra_courses:
         prereqs = prereq_map.get(course_id, set())
         for prereq in prereqs:
-            if prereq not in current_ids and prereq not in completed_ids and prereq not in addon_ids:
+            already_covered = (
+                prereq_satisfied(prereq, completed_ids)
+                or prereq in current_ids
+                or prereq in addon_ids
+            )
+            if not already_covered:
                 extra_prereqs.add(prereq)
 
     # What's left in each scenario
@@ -243,17 +266,19 @@ def get_available_courses(student_id: int, major: str, session: Session = Depend
     # Step 3: Remaining = required - completed
     remaining_ids = required_ids - completed_ids
 
-    # Step 4: For each remaining course, check if all prereqs are satisfied
+    # Step 4: For each remaining course, check if all prereqs are satisfied.
+    # prereq_satisfied() handles OR-style prereqs (e.g. "STA 013/STA 032")
+    # by accepting either alternative, instead of requiring the literal
+    # combined string to appear in completed_ids.
     available = []
     for course_id in remaining_ids:
         prereqs = session.exec(
             select(Prerequisite).where(Prerequisite.course_id == course_id)
         ).all()
 
-        prereq_ids = set(p.prereq_id for p in prereqs)
+        prereq_ids = [p.prereq_id for p in prereqs]
 
-        # All prereqs must be in completed_ids
-        if prereq_ids.issubset(completed_ids):
+        if all(prereq_satisfied(pid, completed_ids) for pid in prereq_ids):
             available.append(course_id)
 
     return {
@@ -334,11 +359,14 @@ def get_plan(student_id: int, major: str, units_per_quarter: int = 16, max_requi
     max_quarters = 20  # safety limit
 
     while remaining and len(quarters) < max_quarters:
-        # Find available courses this quarter
+        # Find available courses this quarter.
+        # prereq_satisfied() lets an OR-style prereq (e.g. "STA 013/STA 032")
+        # be met by either alternative, consistent with get_available_courses
+        # and what_if above.
         available = []
         for course_id in remaining:
             prereqs = prereq_map.get(course_id, set())
-            if prereqs.issubset(scheduled):
+            if all(prereq_satisfied(pid, scheduled) for pid in prereqs):
                 available.append(course_id)
 
         if not available:
@@ -419,7 +447,12 @@ def seed_data(session: Session = Depends(get_session)):
         Course(course_id="STA 131A", name="Introduction to Probability Theory", units=4),
         Course(course_id="STA 131B", name="Mathematical Statistics", units=4),
         Course(course_id="STA 141A", name="Fundamentals of Statistical Data Science", units=4),
-        Course(course_id="STA 013/STA 032", name="Elementary Statistics or Gateway to Statistical Data Science", units=4),
+        # STA 013 and STA 032 are the two real, individually completable
+        # courses behind the "STA 013/STA 032" OR-style prerequisite. A
+        # student takes one of these, not the combined placeholder string,
+        # so both need their own real Course row to be logged as completed.
+        Course(course_id="STA 013", name="Elementary Statistics", units=4),
+        Course(course_id="STA 032", name="Gateway to Statistical Data Science", units=4),
     ]
 
     for course in courses:
@@ -490,7 +523,9 @@ def seed_data(session: Session = Depends(get_session)):
     Prerequisite(course_id="PHY 9B",  prereq_id="MAT 21C"),
     Prerequisite(course_id="PHY 9C",  prereq_id="PHY 9B"),
     Prerequisite(course_id="PHY 9C",  prereq_id="MAT 22A"),
-    # Statistics Minor prerequisites
+    # Statistics Minor prerequisites — stays as the compound "STA 013/STA 032"
+    # id here; prereq_satisfied() is what expands it into its alternatives
+    # at check time.
     Prerequisite(course_id="STA 131B", prereq_id="STA 131A"),
     Prerequisite(course_id="STA 141A", prereq_id="STA 131A"),
     Prerequisite(course_id="STA 106",  prereq_id="STA 013/STA 032"),

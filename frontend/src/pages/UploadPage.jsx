@@ -25,7 +25,6 @@ function UploadPage({ studentId }) {
     setError('')
 
     try {
-      // Convert image to base64
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(reader.result.split(',')[1])
@@ -33,18 +32,18 @@ function UploadPage({ studentId }) {
         reader.readAsDataURL(image)
       })
 
-        const response = await fetch('https://aggiepath-backend.onrender.com/extract-courses', {
+      const response = await fetch('https://aggiepath-backend.onrender.com/extract-courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-        image_data: base64,
-        media_type: image.type
+          image_data: base64,
+          media_type: image.type
         })
       })
-  
-        const data = await response.json()
-        const courses = data.courses
-        setExtractedCourses(courses)
+
+      const data = await response.json()
+      const courses = data.courses
+      setExtractedCourses(courses)
     } catch (err) {
       setError('Could not extract courses. Please try a clearer image or add manually.')
     }
@@ -52,11 +51,29 @@ function UploadPage({ studentId }) {
     setLoading(false)
   }
 
+  // Editing helpers: each change swaps one field on one row, leaving the rest untouched.
+  function updateCourseField(index, field, value) {
+    setExtractedCourses(prev =>
+      prev.map((course, i) => (i === index ? { ...course, [field]: value } : course))
+    )
+  }
+
+  function removeCourse(index) {
+    setExtractedCourses(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function addBlankCourse() {
+    setExtractedCourses(prev => [...prev, { course_id: '', term: '', grade: '' }])
+  }
+
   async function handleConfirm() {
     if (!extractedCourses) return
     setLoading(true)
 
-    for (const course of extractedCourses) {
+    // Skip any row left blank after editing, rather than sending a bad request for it.
+    const coursesToSave = extractedCourses.filter(c => c.course_id.trim() !== '')
+
+    for (const course of coursesToSave) {
       try {
         await fetch('https://aggiepath-backend.onrender.com/completed-courses', {
           method: 'POST',
@@ -64,7 +81,7 @@ function UploadPage({ studentId }) {
           body: JSON.stringify({
             id: null,
             student_id: studentId,
-            course_id: course.course_id,
+            course_id: course.course_id.trim(),
             term: course.term || '',
             grade: course.grade || ''
           })
@@ -162,22 +179,95 @@ function UploadPage({ studentId }) {
 
         {extractedCourses && (
           <Card title={`Extracted Courses (${extractedCourses.length} found)`}>
+            <p style={{ color: "#999", fontSize: "12px", marginBottom: "12px" }}>
+              Double check these against your transcript. Fix anything that's wrong, remove anything
+              that doesn't belong, or add a row for anything that got missed.
+            </p>
+
             <ul style={{ listStyle: "none", padding: 0, marginBottom: "16px" }}>
               {extractedCourses.map((course, index) => (
                 <li key={index} style={{
                   display: "flex",
-                  justifyContent: "space-between",
+                  gap: "8px",
+                  alignItems: "center",
                   padding: "8px 0",
-                  borderBottom: "1px solid #f0f0f0",
-                  fontSize: "13px"
+                  borderBottom: "1px solid #f0f0f0"
                 }}>
-                  <span style={{ fontWeight: "600", color: "#002855" }}>{course.course_id}</span>
-                  <span style={{ color: "#999" }}>
-                    {course.term}{course.grade ? ` · ${course.grade}` : ''}
-                  </span>
+                  <input
+                    value={course.course_id}
+                    onChange={e => updateCourseField(index, 'course_id', e.target.value)}
+                    placeholder="Course ID"
+                    style={{
+                      flex: 2,
+                      padding: "6px 8px",
+                      fontSize: "13px",
+                      fontWeight: "600",
+                      color: "#002855",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px"
+                    }}
+                  />
+                  <input
+                    value={course.term}
+                    onChange={e => updateCourseField(index, 'term', e.target.value)}
+                    placeholder="Term"
+                    style={{
+                      flex: 2,
+                      padding: "6px 8px",
+                      fontSize: "13px",
+                      color: "#666",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px"
+                    }}
+                  />
+                  <input
+                    value={course.grade}
+                    onChange={e => updateCourseField(index, 'grade', e.target.value)}
+                    placeholder="Grade"
+                    style={{
+                      flex: 1,
+                      padding: "6px 8px",
+                      fontSize: "13px",
+                      color: "#666",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px"
+                    }}
+                  />
+                  <button
+                    onClick={() => removeCourse(index)}
+                    aria-label={`Remove ${course.course_id || 'this row'}`}
+                    style={{
+                      padding: "6px 10px",
+                      backgroundColor: "white",
+                      color: "#c0392b",
+                      border: "1px solid #eee",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "13px"
+                    }}
+                  >
+                    ✕
+                  </button>
                 </li>
               ))}
             </ul>
+
+            <button
+              onClick={addBlankCourse}
+              style={{
+                width: "100%",
+                padding: "8px",
+                marginBottom: "16px",
+                backgroundColor: "white",
+                color: "#002855",
+                border: "1px dashed #002855",
+                borderRadius: "6px",
+                fontSize: "13px",
+                cursor: "pointer"
+              }}
+            >
+              + Add a course that was missed
+            </button>
 
             <div style={{ display: "flex", gap: "12px" }}>
               <button
