@@ -101,6 +101,18 @@ With the backend running, hit `POST /seed` at `http://127.0.0.1:8000/docs`
 
 ---
 
+## Screenshots
+
+![Onboarding](screenshots/onboarding.png)
+
+![Dashboard](screenshots/dashboard.png)
+
+![What-If](screenshots/what_if.png)
+
+![Plan](screenshots/plan.png)
+
+---
+
 ## Author
 
 Jai Totla  
