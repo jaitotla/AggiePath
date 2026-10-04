@@ -103,5 +103,5 @@ With the backend running, hit `POST /seed` at `http://127.0.0.1:8000/docs`
 
 ## Author
 
-Jai Totla
+Jai Totla  
 UC Davis Computer Science & Statistics
